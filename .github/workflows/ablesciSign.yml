@@ -26,11 +26,7 @@ jobs:
       - name: Run AbleSci Sign
         id: sign
         run: |
-          python ablesci.py > output.log
-          LOG_CONTENT=$(cat output.log)
-          echo "LOG_CONTENT<<EOF" >> $GITHUB_ENV
-          echo "$LOG_CONTENT" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          python -u ablesci.py
         env:
           GITHUB_ACTIONS: true
           ABLESCI_ACCOUNTS: ${{ secrets.ABLESCI_ACCOUNTS }}
@@ -38,7 +34,3 @@ jobs:
           # SCKEY: ${{ secrets.SCKEY }}          # Server酱
           # XZKEY: ${{ secrets.XZKEY }}        # 息知 (按需启用)
           PUSH_PLUS_TOKEN: ${{ secrets.PUSH_PLUS_TOKEN }} # PushPlus (按需启用)
-
-      - name: Display Log
-        run: |
-          echo "$LOG_CONTENT"

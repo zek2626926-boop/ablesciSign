@@ -80,10 +80,6 @@ def load_env_file():
     elif account_lines:
         print(f"警告：存在无键账号行，但 {ENV_ACCOUNTS} 已通过系统或标准键值对设置，忽略无键行")
 
-    if ENV_ACCOUNTS in os.environ:
-        val = os.environ[ENV_ACCOUNTS]
-        print(f"当前 {ENV_ACCOUNTS} 内容预览: {val[:100]}{'...' if len(val) > 100 else ''}")
-
 load_env_file()
 
 def get_beijing_time():
@@ -191,6 +187,7 @@ class AbleSciAuto:
         self.username = None
         self.points = None
         self.sign_days = None
+        self.success = False
         self.notifier = notifier if notifier else Notifier()
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
@@ -215,8 +212,11 @@ class AbleSciAuto:
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, 'html.parser')
                 csrf_token = soup.find('input', {'name': '_csrf'})
-                if csrf_token:
-                    return csrf_token.get('value', '')
+                if csrf_token and csrf_token.get('value'):
+                    return csrf_token.get('value')
+                csrf_meta = soup.find('meta', {'name': 'csrf-token'})
+                if csrf_meta:
+                    return csrf_meta.get('content', '')
             else:
                 self.log(f"获取CSRF令牌失败，状态码: {response.status_code}", "error")
         except Exception as e:
@@ -376,6 +376,7 @@ class AbleSciAuto:
 
     def run(self):
         """执行完整的登录和签到流程"""
+        self.success = False
         if self.login():
             self.get_user_info()
             self.display_summary(is_before_sign=True)
@@ -383,6 +384,7 @@ class AbleSciAuto:
             sign_result = self.sign_in()
             
             if sign_result:
+                self.success = True
                 self.log("签到完成，刷新用户信息...", "info")
                 time.sleep(2)
                 self.get_user_info()
@@ -395,9 +397,6 @@ def get_accounts():
     accounts_env = os.getenv(ENV_ACCOUNTS)
     if not accounts_env:
         return []
-    
-    # 调试输出
-    print(f"原始账号环境变量内容: {repr(accounts_env)}")
     
     accounts = []
     # 支持换行符、分号、逗号分隔
@@ -425,7 +424,7 @@ def get_accounts():
         elif "|" in account:
             email, password = account.split("|", 1)
         else:
-            print(f"警告：跳过格式错误的账号项: {account}")
+            print("警告：跳过格式错误的账号项（内容已隐藏）")
             continue
             
         email = email.strip()
@@ -433,7 +432,7 @@ def get_accounts():
         if email and password:
             valid_accounts.append((email, password))
         else:
-            print(f"警告：账号或密码为空: {email}:{password}")
+            print("警告：账号或密码为空（内容已隐藏）")
     
     return valid_accounts
 
@@ -451,15 +450,18 @@ def main():
         global_notifier.log(f"请设置环境变量 {ENV_ACCOUNTS}，格式为：邮箱1:密码1[换行]邮箱2:密码2", "warning")
         if global_notifier.notify_enabled:
             global_notifier.send_notification()
-        return
+        return 1
     
     global_notifier.log(f"找到 {account_count} 个账号", "info")
+    all_success = True
     
     for i, (email, password) in enumerate(accounts, 1):
         global_notifier.log(f"\n===== 开始处理第 {i}/{account_count} 个账号 =====", "info")
         
         automator = AbleSciAuto(email, password, notifier=global_notifier)
         automator.run()
+        if not automator.success:
+            all_success = False
         
         global_notifier.log(f"===== 完成第 {i}/{account_count} 个账号处理 =====", "info")
     
@@ -468,8 +470,7 @@ def main():
     if global_notifier.notify_enabled:
         global_notifier.send_notification()
     
-    if os.getenv("GITHUB_ACTIONS") == "true":
-        print(f"::set-output name=log_content::{global_notifier.get_content()}")
+    return 0 if all_success else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
